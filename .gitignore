@@ -1,0 +1,29 @@
+# Bazel
+bazel-*
+.bazel/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Generated proto files (produced by Bazel genrule)
+*_pb2.py
+*_pb2_grpc.py
+
+# Docker
+*.tar
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
