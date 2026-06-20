@@ -4,16 +4,18 @@
 #
 #    pip-compile --allow-unsafe --output-file=requirements_lock.txt requirements.txt
 #
-grpcio==1.68.1
+grpcio==1.81.1
     # via
     #   -r requirements.txt
     #   grpcio-tools
-grpcio-tools==1.68.1
+grpcio-tools==1.81.1
     # via -r requirements.txt
-protobuf==5.29.3
+protobuf==6.33.6
     # via
     #   -r requirements.txt
     #   grpcio-tools
+typing-extensions==4.15.0
+    # via grpcio
 
 # The following packages are considered to be unsafe in a requirements file:
 setuptools==82.0.1
