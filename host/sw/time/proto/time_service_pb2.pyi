@@ -18,7 +18,7 @@ DESCRIPTOR: _descriptor.FileDescriptor
 
 @_typing.final
 class GetTimeRequest(_message.Message):
-    """client 送出的請求（不需要任何參數）"""
+    """GetTimeRequest carries no parameters; the server reads the clock itself."""
 
     DESCRIPTOR: _descriptor.Descriptor
 
@@ -35,7 +35,7 @@ Global___GetTimeRequest: _TypeAlias = GetTimeRequest  # noqa: Y015
 
 @_typing.final
 class GetTimeResponse(_message.Message):
-    """server 回傳的時間資訊"""
+    """GetTimeResponse contains the current time in several representations."""
 
     DESCRIPTOR: _descriptor.Descriptor
 
@@ -45,15 +45,15 @@ class GetTimeResponse(_message.Message):
     TIMEZONE_FIELD_NUMBER: _builtins.int
     HOSTNAME_FIELD_NUMBER: _builtins.int
     timestamp: _builtins.str
-    """ISO 8601 格式，例如 "2026-06-20T10:30:00+00:00" """
+    """ISO 8601 wall-clock time in UTC, e.g. "2026-06-20T10:30:00+00:00" """
     unix_seconds: _builtins.int
-    """Unix timestamp（秒）"""
+    """Unix epoch seconds"""
     unix_nanos: _builtins.int
-    """奈秒部分（來自 time.time_ns）"""
+    """Nanosecond fraction (from time.time_ns())"""
     timezone: _builtins.str
-    """主機時區，例如 "Asia/Taipei" """
+    """Local timezone abbreviation, e.g. "CST" """
     hostname: _builtins.str
-    """Pod / 主機名稱"""
+    """Pod or host name"""
     def __init__(
         self,
         *,

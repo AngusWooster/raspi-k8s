@@ -26,7 +26,7 @@ if _version_not_supported:
 
 
 class TimeServiceStub:
-    """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
+    """TimeService exposes the Raspberry Pi system clock over gRPC.
     """
 
     def __init__(self, channel):
@@ -43,7 +43,7 @@ class TimeServiceStub:
 
 
 class TimeServiceServicer:
-    """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
+    """TimeService exposes the Raspberry Pi system clock over gRPC.
     """
 
     def GetTime(self, request, context):
@@ -69,7 +69,7 @@ def add_TimeServiceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class TimeService:
-    """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
+    """TimeService exposes the Raspberry Pi system clock over gRPC.
     """
 
     @staticmethod

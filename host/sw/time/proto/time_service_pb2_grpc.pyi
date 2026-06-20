@@ -27,7 +27,7 @@ GRPC_GENERATED_VERSION: str
 GRPC_VERSION: str
 
 class TimeServiceStub:
-    """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面"""
+    """TimeService exposes the Raspberry Pi system clock over gRPC."""
 
     @_typing.overload
     def __new__(cls, channel: _grpc.Channel) -> _Self: ...
@@ -37,13 +37,13 @@ class TimeServiceStub:
 
 @_typing.type_check_only
 class TimeServiceAsyncStub(TimeServiceStub):
-    """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面"""
+    """TimeService exposes the Raspberry Pi system clock over gRPC."""
 
     def __init__(self, channel: _aio.Channel) -> None: ...
     GetTime: _aio.UnaryUnaryMultiCallable[_time_service_pb2.GetTimeRequest, _time_service_pb2.GetTimeResponse]  # type: ignore[assignment]
 
 class TimeServiceServicer(metaclass=_abc_1.ABCMeta):
-    """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面"""
+    """TimeService exposes the Raspberry Pi system clock over gRPC."""
 
     @_abc_1.abstractmethod
     def GetTime(
