@@ -1,0 +1,23 @@
+module(
+    name = "raspi_k8s",
+    version = "0.1.0",
+)
+
+# rules_python：讓 Bazel 支援 Python 的建置規則
+bazel_dep(name = "rules_python", version = "0.36.0")
+
+# 指定 Python 工具鏈版本
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    python_version = "3.11",
+    is_default = True,
+)
+
+# 設定 pip 套件來源，指向我們的 lock file
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "pip",
+    python_version = "3.11",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "pip")

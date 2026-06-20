@@ -1,0 +1,9 @@
+load("@pip//:requirements.bzl", "all_requirements")
+
+# 讓 Bazel 追蹤 requirements 檔案
+# 日後執行 bazel run //:requirements.update 可重新產生 lock file
+filegroup(
+    name = "requirements",
+    srcs = ["requirements.txt"],
+    visibility = ["//visibility:public"],
+)

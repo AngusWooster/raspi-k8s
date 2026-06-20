@@ -1,0 +1,5 @@
+# 啟用 bzlmod（使用 MODULE.bazel 管理外部相依）
+common --enable_bzlmod
+
+# 建置時使用 Python 3
+build --python_version=PY3
