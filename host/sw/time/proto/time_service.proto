@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package time_service;
+
+// TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
+service TimeService {
+  rpc GetTime (GetTimeRequest) returns (GetTimeResponse);
+}
+
+// client 送出的請求（不需要任何參數）
+message GetTimeRequest {}
+
+// server 回傳的時間資訊
+message GetTimeResponse {
+  string timestamp   = 1;  // ISO 8601 格式，例如 "2026-06-20T10:30:00+00:00"
+  int64 unix_seconds = 2;  // Unix timestamp（秒）
+  int32 unix_nanos   = 3;  // 奈秒部分（來自 time.time_ns）
+  string timezone    = 4;  // 主機時區，例如 "Asia/Taipei"
+  string hostname    = 5;  // Pod / 主機名稱
+}

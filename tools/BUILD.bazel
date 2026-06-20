@@ -1,0 +1,11 @@
+load("@pip//:requirements.bzl", "requirement")
+
+# gen_proto 是一個 Python 程式，Bazel genrule 會把它當工具來執行
+py_binary(
+    name = "gen_proto",
+    srcs = ["gen_proto.py"],
+    deps = [
+        requirement("grpcio-tools"),
+    ],
+    visibility = ["//visibility:public"],
+)
