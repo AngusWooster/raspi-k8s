@@ -1,0 +1,9 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "extraPaths": [
+    "host/sw/time/proto"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic"
+}
