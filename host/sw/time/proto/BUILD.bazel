@@ -1,26 +1,15 @@
 load("@pip//:requirements.bzl", "requirement")
 
-# genrule：執行 tools/gen_proto，把 .proto 轉成 Python 程式碼
-genrule(
-    name = "gen_time_proto",
-    srcs = ["time_service.proto"],
-    outs = [
-        "time_service_pb2.py",
-        "time_service_pb2_grpc.py",
-    ],
-    cmd = "$(location //tools:gen_proto) $(location time_service.proto) $(RULEDIR)",
-    tools = ["//tools:gen_proto"],
-)
-
-# py_library：把產生的 Python 檔包裝成可被其他 target 引用的函式庫
+# py_library：把 proto 產生的 Python 檔包裝成可被其他 target 引用的函式庫
+# 注意：這些 .py 檔是由 scripts/gen_time_proto.sh 產生並 commit 到 source tree
+# 修改 time_service.proto 後，需重新執行 scripts/gen_time_proto.sh
 py_library(
     name = "time_service_proto",
     srcs = [
         "time_service_pb2.py",
         "time_service_pb2_grpc.py",
     ],
-    # imports = ["."] 讓 Python 可以直接 import time_service_pb2
-    # 不需要寫完整路徑 host.sw.time.proto.time_service_pb2
+    # imports=["."] 讓 Python 可以直接 import time_service_pb2
     imports = ["."],
     deps = [
         requirement("grpcio"),
