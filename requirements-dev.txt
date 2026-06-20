@@ -1,0 +1,8 @@
+# 開發工具 — 只有開發機需要，不進 K8s container
+# 安裝方式：pip install -r requirements-dev.txt
+
+# proto 產生時同時產生 .pyi 型別提示檔（給 IDE / Pyright 用）
+mypy-protobuf
+
+# grpc 的型別提示（讓 IDE 知道 grpc.Channel, grpc.RpcError 等型別）
+grpc-stubs

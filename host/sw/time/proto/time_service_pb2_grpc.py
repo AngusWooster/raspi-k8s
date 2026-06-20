@@ -5,7 +5,7 @@ import warnings
 
 import time_service_pb2 as time__service__pb2
 
-GRPC_GENERATED_VERSION = '1.68.1'
+GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in time_service_pb2_grpc.py depends on'
+        + ' but the generated code in time_service_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class TimeServiceStub(object):
+class TimeServiceStub:
     """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
     """
 
@@ -42,7 +42,7 @@ class TimeServiceStub(object):
                 _registered_method=True)
 
 
-class TimeServiceServicer(object):
+class TimeServiceServicer:
     """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
     """
 
@@ -68,7 +68,7 @@ def add_TimeServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class TimeService(object):
+class TimeService:
     """TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
     """
 
