@@ -2,19 +2,19 @@ syntax = "proto3";
 
 package time_service;
 
-// TimeService 提供查詢 Raspberry Pi 系統時間的 gRPC 介面
+// TimeService exposes the Raspberry Pi system clock over gRPC.
 service TimeService {
   rpc GetTime (GetTimeRequest) returns (GetTimeResponse);
 }
 
-// client 送出的請求（不需要任何參數）
+// GetTimeRequest carries no parameters; the server reads the clock itself.
 message GetTimeRequest {}
 
-// server 回傳的時間資訊
+// GetTimeResponse contains the current time in several representations.
 message GetTimeResponse {
-  string timestamp   = 1;  // ISO 8601 格式，例如 "2026-06-20T10:30:00+00:00"
-  int64 unix_seconds = 2;  // Unix timestamp（秒）
-  int32 unix_nanos   = 3;  // 奈秒部分（來自 time.time_ns）
-  string timezone    = 4;  // 主機時區，例如 "Asia/Taipei"
-  string hostname    = 5;  // Pod / 主機名稱
+  string timestamp   = 1;  // ISO 8601 wall-clock time in UTC, e.g. "2026-06-20T10:30:00+00:00"
+  int64 unix_seconds = 2;  // Unix epoch seconds
+  int32 unix_nanos   = 3;  // Nanosecond fraction (from time.time_ns())
+  string timezone    = 4;  // Local timezone abbreviation, e.g. "CST"
+  string hostname    = 5;  // Pod or host name
 }

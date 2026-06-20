@@ -1,6 +1,8 @@
 load("@pip//:requirements.bzl", "requirement")
 
-# gen_proto 是一個 Python 程式，Bazel genrule 會把它當工具來執行
+# Proto generation tool used by shell scripts (scripts/gen_time_proto.sh).
+# Also usable as a Bazel target:
+#   bazel run //tools:gen_proto -- <proto_file> <output_dir>
 py_binary(
     name = "gen_proto",
     srcs = ["gen_proto.py"],

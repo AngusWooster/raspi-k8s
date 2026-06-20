@@ -1,48 +1,156 @@
-# Step 3：gRPC 服務實作（daemon + client）
+# Step 3：gRPC 服務實作
 
-## 這一步做了什麼
+## 本章目標
 
-實作 `time daemon`：
+完成 `host/sw/time/` 底下的核心程式碼，讓你能夠：
+
+- 在開發機本機執行一個 gRPC server（`daemon.py`）
+- 用 client（`client.py`）連上去查詢 Raspberry Pi 系統時間
+- 透過 Bazel 建置與執行兩個程式
+
+---
+
+## 背景知識：gRPC 是什麼？
+
+### RPC（Remote Procedure Call）
+
+平常呼叫函式是在同一台電腦同一個程式裡：
+
+```python
+result = get_time()   # 本地呼叫
+```
+
+**RPC** 讓你對另一台電腦上的程式做同樣的事，看起來也像函式呼叫，但背後是網路通訊：
+
+```python
+result = stub.GetTime(request)   # 實際上是發一個網路請求到 Pi 上的 daemon
+```
+
+### gRPC 是 Google 開源的 RPC 框架
+
+- 用 **Protocol Buffer（protobuf）** 定義介面（比 JSON 更小更快）
+- 支援多種語言（Python、Go、C++...）
+- 用 HTTP/2 傳輸，支援雙向串流
+
+### 本專案的 gRPC 通訊
 
 ```
-client.py  ──gRPC──►  daemon.py  ──讀取──►  Raspberry Pi 系統時間
-```
-
-涉及的檔案：
-
-```
-host/sw/time/
-├── daemon.py      gRPC server，讀取系統時間並回傳
-├── client.py      gRPC client，連到 server 查詢時間並印出
-└── BUILD.bazel    告訴 Bazel 如何建置這兩個程式
+開發機或 K8s Pod                 Raspberry Pi 5
+┌──────────────────┐             ┌──────────────────────┐
+│  client.py       │             │  daemon.py           │
+│                  │  ──gRPC──►  │                      │
+│  stub.GetTime()  │  ◄──gRPC──  │  def GetTime():      │
+│                  │             │      return 系統時間  │
+└──────────────────┘             └──────────────────────┘
+        port 50052 (本機) / 30052 (K8s NodePort)
 ```
 
 ---
 
-## 一、daemon.py 解說
-
-### 整體結構
+## 本章涉及的檔案
 
 ```
-daemon.py
-├── import                     載入 grpc、datetime、socket 等
-├── class TimeServiceServicer  實作業務邏輯（繼承 proto 產生的基底類別）
-│   └── def GetTime()          讀取系統時間，組成 Response 回傳
-├── def serve()                建立並啟動 gRPC server
-├── def _parse_args()          解析命令列參數（--port、--workers）
-└── if __name__ == "__main__"  程式進入點
+host/sw/time/
+├── daemon.py          gRPC server 主程式
+├── client.py          gRPC client 測試工具
+├── BUILD.bazel        Bazel 建置規則
+└── proto/
+    ├── time_service.proto        介面定義（手寫）
+    ├── time_service_pb2.py       message 類別（script 產生）
+    ├── time_service_pb2_grpc.py  service 類別（script 產生）
+    ├── time_service_pb2.pyi      message 型別提示（script 產生）
+    └── time_service_pb2_grpc.pyi service 型別提示（script 產生）
 ```
 
-### Servicer 類別
+---
+
+## 一、Proto 定義回顧
+
+`time_service.proto` 是整個 gRPC 服務的合約，client 和 server 都遵守它：
+
+```proto
+syntax = "proto3";
+package time_service;
+
+service TimeService {
+  rpc GetTime (GetTimeRequest) returns (GetTimeResponse);
+}
+
+message GetTimeRequest {}   // 不需要輸入參數
+
+message GetTimeResponse {
+  string timestamp   = 1;   // ISO 8601 時間，例如 "2026-06-20T10:30:00+00:00"
+  int64 unix_seconds = 2;   // Unix 秒
+  int32 unix_nanos   = 3;   // 奈秒部分
+  string timezone    = 4;   // 時區，例如 "CST"
+  string hostname    = 5;   // Pod / 主機名稱
+}
+```
+
+**欄位編號（`= 1`, `= 2`...）** 是 protobuf 序列化時的識別碼，不是排列順序。
+一旦部署後**絕對不能改**，改了就無法解析舊版的訊息。
+
+---
+
+## 二、Proto 程式碼產生
+
+`time_service.proto` 不能直接被 Python 使用，需要先用工具轉換。
+
+### 執行產生 script
+
+```bash
+./scripts/gen_time_proto.sh
+```
+
+### Script 做了什麼
+
+```
+time_service.proto
+      │
+      │  grpc_tools.protoc（grpcio-tools 提供）
+      │
+      ├──► time_service_pb2.py       message 類別（Python runtime 使用）
+      ├──► time_service_pb2_grpc.py  service 類別（Python runtime 使用）
+      │
+      │  mypy-protobuf plugin
+      │
+      ├──► time_service_pb2.pyi      message 型別提示（IDE 使用）
+      └──► time_service_pb2_grpc.pyi service 型別提示（IDE 使用）
+```
+
+### 為什麼需要 .pyi 型別提示檔
+
+protobuf 的 `.py` 用動態方式建立類別，型別檢查工具（Pyright / Pylance）看不懂，
+會報錯 `"GetTimeResponse" is not a known attribute`。
+
+`.pyi` 是靜態的型別宣告檔，Pyright 讀它就能理解所有類別和屬性，IDE 的 autocomplete 和錯誤提示才會正確。
+
+---
+
+## 三、daemon.py 逐行解說
+
+### 3-1 模組載入
+
+```python
+import time_service_pb2        # message 類別：GetTimeRequest, GetTimeResponse
+import time_service_pb2_grpc   # service 類別：TimeServiceServicer, add_...to_server
+```
+
+這兩個 import 能成功，是因為 `proto/BUILD.bazel` 裡的 `imports = ["."]`
+把 `host/sw/time/proto/` 加到 Python 的搜尋路徑（PYTHONPATH）。
+
+### 3-2 Servicer 類別
 
 ```python
 class TimeServiceServicer(time_service_pb2_grpc.TimeServiceServicer):
 ```
 
-- **繼承**自 proto 產生的 `TimeServiceServicer`（在 `_grpc.py` 裡）
-- 必須**覆寫** `GetTime` 方法，否則呼叫時回傳 `UNIMPLEMENTED` 錯誤
+**繼承**（inheritance）的用途：proto 產生的基底類別定義了介面（有哪些方法），
+我們的類別**覆寫**（override）`GetTime` 填入真正的邏輯。
 
-### GetTime 方法的參數
+如果不覆寫，呼叫時 gRPC 會回傳 `UNIMPLEMENTED` 錯誤。
+
+### 3-3 GetTime 方法
 
 ```python
 def GetTime(self, _request, context):
@@ -50,24 +158,52 @@ def GetTime(self, _request, context):
 
 | 參數 | 說明 |
 |------|------|
-| `_request` | client 送來的 `GetTimeRequest`（此服務不需要輸入，加 `_` 表示故意不用） |
-| `context` | gRPC 連線資訊，可用 `context.peer()` 取得 client IP |
+| `_request` | `GetTimeRequest` 物件（這個服務不需要輸入，加 `_` 表示故意不用） |
+| `context` | gRPC 連線資訊，可用 `context.peer()` 取得 client 的 IP 位址 |
 
-### 讀取系統時間
+**讀取系統時間：**
 
 ```python
-ns = time.time_ns()              # 取得奈秒精度的 Unix timestamp
+ns = time.time_ns()              # 奈秒精度（Python 3.7+）
 unix_seconds = ns // 1_000_000_000
 unix_nanos   = ns %  1_000_000_000
-
-now_utc = datetime.datetime.now(datetime.timezone.utc)
-now_utc.isoformat()              # "2026-06-20T10:30:00.123456+00:00"
 ```
 
-- `time.time_ns()` — Python 3.7+，比 `time.time()` 精度更高（奈秒 vs 浮點秒）
-- `datetime.timezone.utc` — 明確指定 UTC，避免時區混淆
+`time.time_ns()` 比 `time.time()` 更精確：
+- `time.time()` 回傳浮點數，浮點誤差約 ±1 微秒
+- `time.time_ns()` 回傳整數奈秒，無浮點誤差
 
-### SIGTERM 處理
+**建立 Response：**
+
+```python
+return time_service_pb2.GetTimeResponse(
+    timestamp=now_utc.isoformat(),
+    unix_seconds=unix_seconds,
+    unix_nanos=unix_nanos,
+    timezone=local_tz,
+    hostname=socket.gethostname(),
+)
+```
+
+欄位名稱必須和 `time_service.proto` 裡的 `message GetTimeResponse` 完全一致。
+
+### 3-4 serve() 函式
+
+```python
+server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+```
+
+- `ThreadPoolExecutor(max_workers=10)` — 同時最多處理 10 個請求，每個用一個執行緒
+- 適合 I/O 密集型（讀時間、讀感測器）；CPU 密集型應考慮 ProcessPoolExecutor
+
+```python
+server.add_insecure_port("[::]:{port}")
+```
+
+- `[::]` — 監聽所有網路介面（IPv4 + IPv6），在 K8s Pod 裡必須這樣設定
+- `insecure` — 不加密，適合叢集內部。正式環境應改用 TLS
+
+### 3-5 SIGTERM 優雅停止
 
 ```python
 def _handle_sigterm(*_):
@@ -77,42 +213,18 @@ def _handle_sigterm(*_):
 signal.signal(signal.SIGTERM, _handle_sigterm)
 ```
 
-K8s 關閉 Pod 時會先送 `SIGTERM`，給服務 5 秒「優雅停止」（處理完手頭的請求再關）。
-不處理 SIGTERM 的話，K8s 等 30 秒後強制 SIGKILL，可能中斷正在處理的請求。
+K8s 刪除 Pod 的流程：
+1. 發送 `SIGTERM` → 我們的程式收到，開始優雅停止
+2. 等 `terminationGracePeriodSeconds`（預設 30 秒）
+3. 如果還沒停，強制發送 `SIGKILL`
 
-### ThreadPoolExecutor
-
-```python
-server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-```
-
-gRPC server 同時可以處理最多 10 個平行請求，每個用一個執行緒處理。
-
-### 監聽地址
-
-```python
-server.add_insecure_port("[::]:{port}")
-```
-
-- `[::]` — 監聽所有網路介面（IPv4 + IPv6），K8s 需要這樣才能接受來自其他 Pod 的連線
-- `insecure` — 不加密，適合叢集內部通訊。正式環境需換成 TLS
+`server.stop(grace=5)` — 停止接受新請求，等最多 5 秒讓進行中的請求完成。
 
 ---
 
-## 二、client.py 解說
+## 四、client.py 逐行解說
 
-### 整體結構
-
-```
-client.py
-├── import
-├── def get_time(host, port)    連到 server 並呼叫 GetTime()
-├── def print_response(resp)    格式化印出結果
-├── def _parse_args()           解析 --host、--port
-└── if __name__ == "__main__"   執行 get_time，處理錯誤
-```
-
-### Stub 是什麼？
+### 4-1 Channel 與 Stub
 
 ```python
 with grpc.insecure_channel(address) as channel:
@@ -120,177 +232,208 @@ with grpc.insecure_channel(address) as channel:
     response = stub.GetTime(time_service_pb2.GetTimeRequest())
 ```
 
-- `channel` — 連線到 server 的通道（像是電話線）
-- `stub` — 讓你「假裝」在呼叫本地函式，背後實際是網路呼叫
-- `stub.GetTime(...)` — 看起來像普通的 Python 函式呼叫，實際是發送 gRPC 請求
+**Channel（通道）：**
+- TCP 連線到 server 的抽象
+- `with` 語句確保使用完後自動關閉連線
 
-### with 語句的作用
+**Stub（存根）：**
+- 代替你「在遠端呼叫函式」的物件
+- `stub.GetTime(...)` 看起來是本地呼叫，實際上：
+  1. 序列化 `GetTimeRequest` 為 protobuf 二進位格式
+  2. 透過 HTTP/2 傳送到 server
+  3. 等待回應
+  4. 反序列化為 `GetTimeResponse` 物件
+
+### 4-2 Timeout
 
 ```python
-with grpc.insecure_channel(address) as channel:
-    ...
+stub.GetTime(request, timeout=5)
 ```
 
-離開 `with` 區塊時自動關閉連線，確保不會漏掉資源釋放。
+5 秒內沒有收到回應，拋出 `grpc.RpcError`（錯誤碼 `DEADLINE_EXCEEDED`）。
+在 K8s 環境中一定要設 timeout，避免無限等待。
 
-### 錯誤處理
+### 4-3 錯誤處理
 
 ```python
 except grpc.RpcError as e:
-    print(f"錯誤：{e.code()} — {e.details()}")
+    print(f"Reason: {e.code()} — {e.details()}")
 ```
 
 常見錯誤碼：
 
-| 錯誤碼 | 原因 |
-|--------|------|
-| `UNAVAILABLE` | server 沒有在跑，或 IP/port 錯誤 |
-| `DEADLINE_EXCEEDED` | 超過 `timeout=5` 秒沒有回應 |
-| `UNIMPLEMENTED` | server 沒有實作這個方法 |
+| 錯誤碼 | 意義 | 常見原因 |
+|--------|------|----------|
+| `UNAVAILABLE` | 無法連到 server | daemon 沒有跑、IP/port 錯誤 |
+| `DEADLINE_EXCEEDED` | 超時 | server 太慢、網路問題 |
+| `UNIMPLEMENTED` | 方法不存在 | server 版本不一致 |
+| `INTERNAL` | server 內部錯誤 | daemon 程式碼有例外 |
 
 ---
 
-## 三、BUILD.bazel 解說
+## 五、BUILD.bazel 解說
 
 ```python
 py_binary(
     name = "daemon",
     srcs = ["daemon.py"],
     deps = [
-        "//host/sw/time/proto:time_service_proto",  # proto 產生的 py_library
-        requirement("grpcio"),                       # pip 套件
+        "//host/sw/time/proto:time_service_proto",
+        requirement("grpcio"),
     ],
 )
 ```
 
-- `py_binary` — 產生一個可執行的 Python 程式
-- `deps` — 列出所有相依：proto 函式庫 + grpcio 套件
-- Bazel 自動追蹤相依，確保 `daemon` 建置前 `time_service_proto` 已建置
+**`py_binary`** — 產生可執行的 Python 程式（對應 `py_library` 是函式庫）
+
+**`deps` 的兩種來源：**
+
+| 寫法 | 來源 | 範例 |
+|------|------|------|
+| `//host/sw/time/proto:name` | 專案內其他 Bazel target | proto 函式庫 |
+| `requirement("grpcio")` | pip 套件（來自 requirements_lock.txt）| grpcio 套件 |
+
+Bazel 會自動解析相依關係：
+```
+:daemon
+  └── //host/sw/time/proto:time_service_proto
+        ├── time_service_pb2.py
+        ├── time_service_pb2_grpc.py
+        ├── requirement("grpcio")
+        └── requirement("protobuf")
+```
 
 ---
 
-## 四、型別提示（.pyi 檔）
-
-### 問題
-
-protobuf 用動態方式建立類別，Pyright / Pylance（IDE 的型別檢查工具）看不懂：
+## 六、型別提示架構
 
 ```
-錯誤：Import "time_service_pb2" could not be resolved
-錯誤："GetTimeResponse" is not a known attribute of module "time_service_pb2"
+開發工具（只有開發機需要）
+requirements-dev.txt
+├── mypy-protobuf   → 產生 .pyi 型別提示檔
+└── grpc-stubs      → grpc 模組的型別定義
+
+pyrightconfig.json（IDE 設定）
+├── venvPath + venv → 告訴 IDE 用 .venv 裡的 Python
+│                     （所以能找到 grpcio）
+└── extraPaths      → 加入 host/sw/time/proto/
+                      （所以能找到 time_service_pb2）
 ```
-
-### 解法：mypy-protobuf
-
-`mypy-protobuf` 讀取 `.proto`，額外產生 `.pyi` 型別提示檔：
-
-```
-time_service.proto
-      │
-      └──► mypy-protobuf ──► time_service_pb2.pyi      ← IDE 讀這個
-                         ──► time_service_pb2_grpc.pyi
-```
-
-`.pyi` 包含明確的類別定義讓 Pyright 讀懂：
-
-```python
-# time_service_pb2.pyi（mypy-protobuf 產生）
-class GetTimeResponse(_message.Message):
-    timestamp: str
-    unix_seconds: int
-    ...
-```
-
-### requirements-dev.txt vs requirements.txt
-
-| 檔案 | 用途 | 會進 Docker 嗎？ |
-|------|------|-----------------|
-| `requirements.txt` | runtime 套件（grpcio、protobuf）| 會 |
-| `requirements-dev.txt` | 開發工具（mypy-protobuf、grpc-stubs）| 不會 |
 
 ---
 
-## 五、開發 venv 設定
+## 七、開發環境設定步驟（從零開始）
 
 ```bash
-# 建立 venv（只需做一次）
+# 1. 建立 venv（只做一次）
 python3 -m venv .venv
 
-# 安裝 runtime 套件
+# 2. 安裝 runtime 套件（Bazel 也會用這份）
 .venv/bin/pip install -r requirements.txt
 
-# 安裝開發工具
+# 3. 安裝開發工具（不進 Docker container）
 .venv/bin/pip install -r requirements-dev.txt
-```
 
-`pyrightconfig.json` 告訴 IDE：
-- 用 `.venv` 裡的 Python（找得到 grpcio）
-- `host/sw/time/proto/` 加到搜尋路徑（找得到 `time_service_pb2`）
+# 4. 產生 proto 程式碼（修改 .proto 後重新執行）
+./scripts/gen_time_proto.sh
+
+# 5. VSCode：選擇 .venv/bin/python3 作為 interpreter
+#    Ctrl+Shift+P → Python: Select Interpreter → .venv/bin/python3
+```
 
 ---
 
-## 六、執行與測試
-
-### 本機測試（兩個終端機）
+## 八、本機測試
 
 ```bash
-# 終端機 1：啟動 daemon
+# 終端機 1：啟動 server
 bazel run //host/sw/time:daemon
+
+# 輸出：
+# 2026-06-20 10:30:00,000 INFO Time service listening on [::]:50052
 
 # 終端機 2：執行 client
 bazel run //host/sw/time:client
+
 # 輸出：
-# Timestamp  : 2026-06-20T10:30:00.123456+00:00
-# Unix time  : 1750415400.123456000
+# Timestamp  : 2026-06-20T10:30:05.123456+00:00
+# Unix time  : 1750415405.123456789
 # Timezone   : CST
 # Hostname   : your-machine-name
 ```
 
-### 連到 Raspberry Pi 上的 daemon
+**帶參數執行：**
 
 ```bash
-bazel run //host/sw/time:client -- --host <Pi-IP> --port 30052
-```
+# 指定不同 port
+bazel run //host/sw/time:daemon -- --port 9090
 
-### 修改 proto 後的流程
-
-```bash
-# 1. 修改 host/sw/time/proto/time_service.proto
-# 2. 重新產生所有 proto 相關檔案
-./scripts/gen_time_proto.sh
-# 3. 確認 diff
-git diff host/sw/time/proto/
-# 4. 重新 build 確認沒有錯誤
-bazel build //host/sw/time/...
-# 5. commit
-git add host/sw/time/proto/
-git commit -m "feat(proto): ..."
+# 連到 Raspberry Pi（K8s NodePort）
+bazel run //host/sw/time:client -- --host 192.168.1.100 --port 30052
 ```
 
 ---
 
-## 七、常見問題
+## 九、修改 proto 後的完整工作流程
 
-**Q：執行 daemon 時顯示 `Address already in use`**
+```bash
+# 1. 編輯 proto 定義
+vim host/sw/time/proto/time_service.proto
+
+# 2. 重新產生所有程式碼
+./scripts/gen_time_proto.sh
+
+# 3. 確認差異
+git diff host/sw/time/proto/
+
+# 4. 更新 daemon.py / client.py（如有新欄位）
+
+# 5. 驗證 build 正常
+bazel build //host/sw/time/...
+
+# 6. 本機測試
+bazel run //host/sw/time:daemon &
+bazel run //host/sw/time:client
+
+# 7. commit 所有 proto 相關檔案
+git add host/sw/time/proto/
+git commit -m "feat(proto): add xxx field to GetTimeResponse"
+```
+
+---
+
+## 十、常見問題
+
+**Q：`Address already in use` 錯誤**
 
 Port 50052 已被佔用：
 ```bash
-# 找出是哪個程式
-lsof -i :50052
-# 或換一個 port
-bazel run //host/sw/time:daemon -- --port 50099
+lsof -i :50052     # 查看是哪個程式
+kill <PID>         # 關掉它
+# 或改用其他 port
+bazel run //host/sw/time:daemon -- --port 9090
 ```
 
-**Q：client 顯示 `UNAVAILABLE — failed to connect`**
+**Q：client 顯示 `UNAVAILABLE`**
 
-daemon 沒有在跑，或 host/port 設定錯誤。先確認：
+daemon 沒有在跑，或 host/port 設定錯誤：
 ```bash
-bazel run //host/sw/time:daemon &
-bazel run //host/sw/time:client
+# 確認 daemon 有在執行
+bazel run //host/sw/time:daemon
+# 然後再開另一個終端機執行 client
 ```
 
-**Q：import 在 IDE 仍然顯示錯誤**
+**Q：IDE 仍然顯示 import 錯誤**
 
-1. 確認 VSCode 已選擇 `.venv` 的 Python：`Ctrl+Shift+P` → `Python: Select Interpreter` → 選 `.venv/bin/python3`
-2. 確認 `pyrightconfig.json` 存在於專案根目錄
-3. 重新執行 `./scripts/gen_time_proto.sh` 確保 `.pyi` 檔存在
+依序確認：
+1. 已執行 `./scripts/gen_time_proto.sh`（`.pyi` 檔是否存在？）
+2. VSCode 已選擇 `.venv/bin/python3` 作為 interpreter
+3. `pyrightconfig.json` 存在於專案根目錄
+4. 重新啟動 VSCode 或執行 `Developer: Reload Window`
+
+**Q：`protoc-gen-mypy: program not found`**
+
+`requirements-dev.txt` 還沒安裝：
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+```

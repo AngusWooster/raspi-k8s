@@ -1,6 +1,6 @@
 load("@pip//:requirements.bzl", "requirement")
 
-# gRPC Server — 讀取系統時間並回傳給 client
+# gRPC server: reads system time and returns it to clients.
 py_binary(
     name = "daemon",
     srcs = ["daemon.py"],
@@ -11,7 +11,7 @@ py_binary(
     visibility = ["//visibility:public"],
 )
 
-# gRPC Client — 連到 daemon 查詢時間
+# gRPC client: connects to the daemon and prints the returned time.
 py_binary(
     name = "client",
     srcs = ["client.py"],
