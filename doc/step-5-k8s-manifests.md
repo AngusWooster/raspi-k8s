@@ -251,8 +251,10 @@ bazel run //host/sw/time:client -- --host <Pi_IP> --port 30052
 
 ### 前置需求
 
-- kubeconfig 已設定（`kubectl get nodes` 可以看到 `raspi5 Ready`）
+- 已完成 [Step 5a：k3s 安裝](step-5a-pi-k3s-setup.md)（kubeconfig 已設定，`kubectl get nodes` 可以看到 `raspi5 Ready`）
 - GHCR 映像是**私有**的，需要建立 imagePullSecret 讓 Pi 5 有權限拉取
+
+> 以下所有指令在**開發機**上執行，從**專案根目錄**（`raspi-k8s/`）下執行。
 
 ### 步驟 1：建立 namespace
 
@@ -336,22 +338,43 @@ kubectl apply -f k8s/time/
 
 ## Section 5：驗證部署
 
+> 以下指令在**開發機**上執行。
+
 ```bash
 # 確認 Pod 正在跑（STATUS 應該是 Running）
 kubectl get pods -n aku-sw
 
 # 確認 Service 和 NodePort 設定正確
 kubectl get service -n aku-sw
+```
 
-# 查看 Pod 的詳細狀態（出問題時用）
+**指令參數說明：**
+
+| 參數 | 說明 |
+|------|------|
+| `kubectl get pods` | 列出指定 namespace 內所有 Pod |
+| `kubectl get service` | 列出指定 namespace 內所有 Service |
+| `-n aku-sw` | `-n` 是 `--namespace`，指定查詢哪個 namespace |
+
+排查問題時用以下指令（將 `<pod_name>` 換成 `kubectl get pods` 輸出的 `NAME` 欄的值，例如 `time-daemon-7d9f8b-xk2p4`）：
+
+```bash
+# 查看 Pod 的詳細事件（出問題時先看這個）
 kubectl describe pod -n aku-sw <pod_name>
 
 # 查看 Pod 的 log（daemon 的輸出）
 kubectl logs -n aku-sw <pod_name>
 
-# 持續追蹤 log
+# 持續追蹤 log（Ctrl+C 離開）
 kubectl logs -n aku-sw <pod_name> -f
 ```
+
+| 參數 | 說明 |
+|------|------|
+| `describe pod` | 顯示 Pod 詳細資訊，包含 Events 區塊，可看到映像拉取、啟動失敗等訊息 |
+| `logs` | 顯示容器的 stdout 輸出（即 daemon.py 的 print 輸出） |
+| `<pod_name>` | 從 `kubectl get pods` 的 `NAME` 欄複製，例如 `time-daemon-7d9f8b-xk2p4` |
+| `-f` | follow，持續串流最新 log，等同 `tail -f` |
 
 **`kubectl get pods` 欄位說明：**
 
@@ -393,6 +416,8 @@ Hostname   : time-daemon-xxx  ← Pod 名稱（不是你的電腦）
 
 ## Section 6：更新映像
 
+> 以下指令在**開發機**上執行，從專案根目錄（`raspi-k8s/`）執行。
+
 當 `daemon.py` 有修改，更新流程：
 
 ```bash
@@ -409,6 +434,16 @@ kubectl rollout restart deployment/time-daemon -n aku-sw
 # 3. 確認更新完成
 kubectl rollout status deployment/time-daemon -n aku-sw
 ```
+
+**指令參數說明：**
+
+| 指令 | 參數 | 說明 |
+|------|------|------|
+| `docker buildx build` | `--platform linux/arm64` | 指定編譯目標為 Pi 5 的 ARM64 架構 |
+| | `--push` | build 完成後直接推送到 GHCR，不在本機保留 |
+| `kubectl rollout restart` | `deployment/time-daemon` | 重啟指定 Deployment。`deployment/` 是資源類型前綴 |
+| | `-n aku-sw` | 在哪個 namespace 執行 |
+| `kubectl rollout status` | 同上 | 等待並顯示 rollout 進度，完成後才回到命令列 |
 
 **為什麼要用 `rollout restart`？**  
 `image: ...:latest` 這個 tag 不變，K8s 不知道映像內容有更新，不會自動重拉。`rollout restart` 強制讓 Deployment 建立新的 Pod（會拉最新的 `latest` 映像），舊 Pod 等新 Pod 就緒後再刪除，做到**零停機更新**。

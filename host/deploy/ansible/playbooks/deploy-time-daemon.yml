@@ -1,0 +1,66 @@
+---
+- name: Deploy time-daemon to Pi 5 k3s
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all.yml"
+
+  vars:
+    kubeconfig: "{{ lookup('env', 'HOME') }}/.kube/config"
+    k8s_namespace: aku-sw
+    image: ghcr.io/anguswooster/raspi-k8s/time-daemon:latest
+    ghcr_username: AngusWooster
+    manifest_dir: "{{ playbook_dir }}/../../../../k8s"
+
+  tasks:
+    - name: Create namespace aku-sw
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ k8s_namespace }}"
+
+    - name: Create GHCR imagePullSecret
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        force: true
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ghcr-secret
+            namespace: "{{ k8s_namespace }}"
+          type: kubernetes.io/dockerconfigjson
+          data:
+            .dockerconfigjson: "{{ {'auths': {'ghcr.io': {'username': ghcr_username, 'password': ghcr_pat}}} | to_json | b64encode }}"
+
+    - name: Apply time-daemon Deployment
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        src: "{{ manifest_dir }}/time/deployment.yaml"
+
+    - name: Apply time-daemon Service
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig }}"
+        state: present
+        src: "{{ manifest_dir }}/time/service.yaml"
+
+    - name: Wait for time-daemon Pod to be Running
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ kubeconfig }}"
+        kind: Pod
+        namespace: "{{ k8s_namespace }}"
+        label_selectors:
+          - app=time-daemon
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 120

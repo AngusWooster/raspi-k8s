@@ -93,6 +93,8 @@ Linux 有兩個版本的 cgroup：
 
 ### 步驟 1：確認使用哪個版本
 
+> 以下指令在 **Pi 5** 上執行（先 `ssh pi@192.168.1.185` 連上後操作）。
+
 ```bash
 mount | grep cgroup
 ```
@@ -170,7 +172,15 @@ mount | grep cgroup
 
 ## Section 3：安裝 k3s
 
-SSH 連上 Pi 5 後執行：
+> 以下指令在 **Pi 5** 上執行。
+
+先 SSH 連上 Pi 5：
+
+```bash
+ssh pi@192.168.1.185
+```
+
+然後執行安裝：
 
 ```bash
 curl -sfL https://get.k3s.io | sh -
@@ -206,8 +216,8 @@ sudo kubectl get nodes
 預期輸出：
 
 ```
-NAME          STATUS   ROLES                  AGE   VERSION
-raspberrypi   Ready    control-plane,master   30s   v1.32.x+k3s1
+NAME     STATUS   ROLES           AGE   VERSION
+raspi5   Ready    control-plane   30s   v1.35.x+k3s1
 ```
 
 `STATUS: Ready` 代表 k3s 正常運作。
@@ -227,7 +237,7 @@ kubeconfig 是一個 YAML 設定檔，記錄：
 
 `kubectl` 預設讀取 `~/.kube/config`。
 
-以下**所有步驟都在開發機上執行**，不需要先 SSH 到 Pi 5。
+步驟 1–4 在**開發機**上執行，步驟 5 需要回到 **Pi 5** 上執行，步驟 6 兩台都要執行。
 
 ### 步驟 1：建立 .kube 目錄
 
@@ -293,6 +303,11 @@ chmod 600 ~/.kube/config
 | `600` | 擁有者可讀寫（`6`），群組和其他人無權限（`00`）。kubeconfig 含有憑證，不應該讓其他使用者讀取 |
 
 ### 步驟 5：讓 pi 使用者可以直接使用 kubectl（在 Pi 5 上執行）
+
+> 這步要切回 **Pi 5**，先 SSH 連上：
+> ```bash
+> ssh pi@192.168.1.185
+> ```
 
 k3s 的 kubectl 會同時嘗試讀取 `~/.kube/config` 和 `/etc/rancher/k3s/k3s.yaml` 並合併，但後者預設只有 root 可讀，導致權限錯誤。
 
