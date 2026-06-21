@@ -834,7 +834,68 @@ ansible-vault encrypt_string "$GHCR_TOKEN" \
 
 **`--name ghcr_pat`** 代表加密結果的變數名，playbook 裡用 `{{ ghcr_pat }}` 引用。
 
-## 6.5 冪等性
+## 6.5 Vault 常用指令
+
+### 加密（把 PAT 寫入 all.yml）
+
+```bash
+read -s GHCR_TOKEN
+ansible-vault encrypt_string "$GHCR_TOKEN" \
+  --vault-password-file ~/.vault_pass \
+  --name ghcr_pat \
+  > host/deploy/ansible/group_vars/all.yml
+```
+
+### 查看加密內容（確認解密後的值是否正確）
+
+```bash
+ansible-vault decrypt \
+  --vault-password-file ~/.vault_pass \
+  --output - \
+  host/deploy/ansible/group_vars/all.yml
+```
+
+| 參數 | 說明 |
+|------|------|
+| `decrypt` | 解密 vault 檔案 |
+| `--output -` | 把解密結果印到螢幕（`-` 代表 stdout），不修改原檔案 |
+
+預期輸出（顯示加密前的值）：
+```
+ghcr_pat: ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
+### 驗證 all.yml 格式是否正確
+
+```bash
+ansible-vault view \
+  --vault-password-file ~/.vault_pass \
+  host/deploy/ansible/group_vars/all.yml
+```
+
+`view` 和 `decrypt --output -` 效果相同，但更簡短。
+
+### 重新加密（PAT 換了）
+
+```bash
+read -s GHCR_TOKEN
+ansible-vault encrypt_string "$GHCR_TOKEN" \
+  --vault-password-file ~/.vault_pass \
+  --name ghcr_pat \
+  > host/deploy/ansible/group_vars/all.yml
+```
+
+> 用 `>`（覆蓋）而不是 `>>`（附加），避免 `all.yml` 出現兩個 `ghcr_pat` key。
+
+### 指令對照表
+
+| 操作 | 指令 |
+|------|------|
+| 加密 PAT → 寫入 all.yml | `ansible-vault encrypt_string "$TOKEN" --vault-password-file ~/.vault_pass --name ghcr_pat > all.yml` |
+| 查看解密後內容 | `ansible-vault view --vault-password-file ~/.vault_pass all.yml` |
+| 解密輸出到螢幕 | `ansible-vault decrypt --vault-password-file ~/.vault_pass --output - all.yml` |
+
+## 6.6 冪等性
 
 Ansible 最重要的特性：**同一個 playbook 跑幾次，結果都一樣**。
 

@@ -212,6 +212,26 @@ ghcr_pat: !vault |
 
 這個檔案可以安全地進 git，沒有 `~/.vault_pass` 無法解密。
 
+### 查看 / 驗證加密內容
+
+確認 all.yml 裡的 PAT 是否正確（解密後印到螢幕，不修改檔案）：
+
+```bash
+ansible-vault view \
+  --vault-password-file ~/.vault_pass \
+  host/deploy/ansible/group_vars/all.yml
+```
+
+| 參數 | 說明 |
+|------|------|
+| `ansible-vault view` | 解密並顯示檔案內容，不修改原檔案 |
+| `--vault-password-file ~/.vault_pass` | 指定解密用的密碼檔 |
+
+預期輸出：
+```
+ghcr_pat: ghp_xxxxxxxxxxxxxxxxxxxx
+```
+
 ### 若需要更換 PAT（重新加密）
 
 PAT 洩露或過期時，重新加密：
