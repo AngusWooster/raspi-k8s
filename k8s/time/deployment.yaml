@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: time-daemon
+  namespace: aku-sw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: time-daemon
+  template:
+    metadata:
+      labels:
+        app: time-daemon
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: time-daemon
+          image: ghcr.io/anguswooster/raspi-k8s/time-daemon:latest
+          ports:
+            - containerPort: 50052
