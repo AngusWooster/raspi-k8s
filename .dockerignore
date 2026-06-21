@@ -1,0 +1,14 @@
+.venv/
+bazel-*
+*.pyc
+__pycache__/
+.git/
+doc/
+scripts/
+tools/
+*.md
+.bazelrc
+.bazelversion
+MODULE.bazel
+MODULE.bazel.lock
+WORKSPACE
